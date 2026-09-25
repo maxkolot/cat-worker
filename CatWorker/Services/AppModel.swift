@@ -163,10 +163,11 @@ final class AppModel {
             .sorted { ($0.updated ?? "") > ($1.updated ?? "") }
     }
 
-    /// Same colors as the browser dashboard: index of the role inside its project
+    /// The server decides each role's color (same in the extension and dashboard); palette only for old data
     func roleColor(_ roleID: String) -> Color {
         let all = state?.roles ?? []
         guard let role = all.first(where: { $0.id == roleID }) else { return Palette.roles[0] }
+        if let serverColor = Color(hexString: role.color) { return serverColor }
         let index = all.filter { $0.projectId == role.projectId }.firstIndex { $0.id == roleID } ?? 0
         return Palette.roles[index % Palette.roles.count]
     }

@@ -50,6 +50,8 @@ struct Role: Decodable, Identifiable, Hashable {
     /// ChatGPT conversation that plays this role (reported by the browser extension)
     let chatUrl: String?
     let prompt: String?
+    /// "#60A5FA" — decided by the server, identical in the extension, dashboard and app
+    let color: String?
 }
 
 struct HistoryEntry: Decodable, Hashable {
@@ -88,7 +90,11 @@ struct BotScreen: Decodable, Identifiable, Hashable {
     let id: String
     let ageMin: Int?
     let idleMin: Int?
+    let tabs: Int?
     let roleId: String?
+    let roleName: String?
+    let roleColor: String?
+    let chatUrl: String?
     let taskId: String?
     let taskTitle: String?
 }
@@ -177,6 +183,14 @@ enum Palette {
 }
 
 extension Color {
+    /// "#60A5FA" / "60A5FA"; nil for anything else
+    init?(hexString: String?) {
+        guard var s = hexString?.trimmingCharacters(in: .whitespaces) else { return nil }
+        if s.hasPrefix("#") { s.removeFirst() }
+        guard s.count == 6, let value = UInt32(s, radix: 16) else { return nil }
+        self.init(hex: value)
+    }
+
     init(hex: UInt32) {
         self.init(
             red: Double((hex >> 16) & 0xFF) / 255,

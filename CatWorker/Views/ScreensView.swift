@@ -77,21 +77,38 @@ struct LiveScreenImage: View {
 
 struct ScreenTile: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
     let screen: BotScreen
 
     var body: some View {
+        let color: Color? = Color(hexString: screen.roleColor) ?? screen.roleId.map { model.roleColor($0) }
         VStack(alignment: .leading, spacing: 6) {
             ScreenFrame { LiveScreenImage(screenID: screen.id, width: 640) }
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(color ?? .clear, lineWidth: 2))
             HStack(spacing: 6) {
                 Circle().fill(BoardColumn.done.color).frame(width: 6, height: 6)
                 Text(screen.id).font(.caption2.monospaced())
                 Spacer()
+                if let tabs = screen.tabs {
+                    Text("вкладок \(tabs)").font(.caption2).foregroundStyle(.tertiary)
+                }
                 if let idle = screen.idleMin, idle > 0 {
                     Text("простой \(idle) мин").font(.caption2).foregroundStyle(.tertiary)
                 }
             }
-            if let roleID = screen.roleId {
-                RoleChip(name: model.role(roleID)?.name ?? roleID, color: model.roleColor(roleID))
+            if let roleID = screen.roleId, let color {
+                HStack(spacing: 6) {
+                    RoleChip(name: "\(roleID) · \(screen.roleName ?? model.role(roleID)?.name ?? roleID)", color: color)
+                    Spacer(minLength: 0)
+                    if let s = screen.chatUrl, let url = URL(string: s) {
+                        Button { openURL(url) } label: { Image(systemName: "bubble.left.fill") }
+                            .buttonStyle(.bordered)
+                            .controlSize(.mini)
+                            .accessibilityLabel("Открыть чат воркера")
+                    }
+                }
+            } else {
+                Text("роль ещё не известна").font(.caption2).foregroundStyle(.tertiary)
             }
             if let taskID = screen.taskId {
                 Text("\(taskID) \(screen.taskTitle ?? "")")
