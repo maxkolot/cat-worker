@@ -41,4 +41,5 @@ source = {
     "news": [],
 }
 
+sys.stdout.reconfigure(encoding="utf-8")
 print(json.dumps(source, ensure_ascii=False, indent=2))
