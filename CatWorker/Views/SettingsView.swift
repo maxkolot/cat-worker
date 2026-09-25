@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
@@ -31,6 +32,8 @@ struct SettingsView: View {
                     .onDelete { model.removeServers(at: $0) }
                 }
 
+                NotificationsSection()
+
                 AddServerSection()
 
                 Section("О приложении") {
@@ -46,6 +49,63 @@ struct SettingsView: View {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         return "\(v) (\(b))"
+    }
+}
+
+/// Blocker pushes come through the free ntfy app: subscribe to the server's secret channel once
+struct NotificationsSection: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
+    @State private var info: NotifyInfo?
+    @State private var failed = false
+
+    var body: some View {
+        Section {
+            if let topic = info?.topic {
+                LabeledContent("Канал", value: topic)
+                    .font(.caption.monospaced())
+                Button {
+                    UIPasteboard.general.string = topic
+                    model.show("Канал скопирован")
+                } label: {
+                    Label("Скопировать канал", systemImage: "doc.on.doc")
+                }
+                Button {
+                    if let url = URL(string: "https://apps.apple.com/app/ntfy/id1625396347") { openURL(url) }
+                } label: {
+                    Label("Скачать ntfy", systemImage: "arrow.down.app")
+                }
+                Button {
+                    Task {
+                        do {
+                            try await model.api?.notifyTest()
+                            model.show("Тестовое уведомление отправлено")
+                        } catch {
+                            model.error = error.localizedDescription
+                        }
+                    }
+                } label: {
+                    Label("Прислать тестовое уведомление", systemImage: "bell.badge")
+                }
+            } else if failed {
+                Text("На сервере не настроены уведомления").foregroundStyle(.secondary)
+            } else {
+                ProgressView()
+            }
+        } header: {
+            Text("Пуши о блокерах · \(model.server?.name ?? "")")
+        } footer: {
+            Text("1) Поставь ntfy из App Store. 2) В ntfy нажми «+», вставь канал (сервер ntfy.sh), подпишись. 3) Проверь тестовым уведомлением. Тап по пушу откроет задачу в Cat Worker. Повтори для каждого котика — у каждого свой канал.")
+        }
+        .task(id: model.selectedServerID) {
+            info = nil
+            failed = false
+            if let loaded = try? await model.api?.notifyInfo(), loaded.topic != nil {
+                info = loaded
+            } else {
+                failed = true
+            }
+        }
     }
 }
 

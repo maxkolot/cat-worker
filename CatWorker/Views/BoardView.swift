@@ -3,7 +3,6 @@ import SwiftUI
 /// Kanban: columns swipe sideways, cards are dragged between columns with a long press.
 struct BoardView: View {
     @Environment(AppModel.self) private var model
-    @State private var openedTask: BoardTask?
     @State private var showNewTask = false
 
     var body: some View {
@@ -25,7 +24,7 @@ struct BoardView: View {
                     ScrollView(.horizontal) {
                         LazyHStack(alignment: .top, spacing: 12) {
                             ForEach(BoardColumn.allCases) { column in
-                                ColumnView(column: column) { openedTask = $0 }
+                                ColumnView(column: column) { model.openTask = TaskRef(id: $0.id) }
                                     .containerRelativeFrame(.horizontal, count: 10, span: 8, spacing: 12)
                             }
                         }
@@ -60,8 +59,8 @@ struct BoardView: View {
                     .padding(20)
                 }
             }
-            .sheet(item: $openedTask) { task in
-                TaskDetailView(taskID: task.id)
+            .sheet(item: $model.openTask) { ref in
+                TaskDetailView(taskID: ref.id)
             }
             .sheet(isPresented: $showNewTask) {
                 NewTaskView()
@@ -201,7 +200,12 @@ struct TaskCard: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            if let note = task.history?.last?.note, !note.isEmpty {
+            if task.status == "blocked", let blocker = task.blocker {
+                Text("⛔ " + blocker)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(BoardColumn.blocked.color)
+                    .lineLimit(3)
+            } else if let note = task.history?.last?.note, !note.isEmpty {
                 Text("↳ " + note)
                     .font(.caption)
                     .foregroundStyle(.secondary)

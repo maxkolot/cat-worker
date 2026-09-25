@@ -60,7 +60,7 @@ struct BotCard: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                statusPill(active: active != nil, bound: chatURL != nil)
+                statusPill(blocked: active?.status == "blocked", active: active != nil, bound: chatURL != nil)
             }
 
             ProgressView(value: tasks.isEmpty ? 0 : Double(done) / Double(tasks.count))
@@ -70,6 +70,19 @@ struct BotCard: View {
                 HStack(alignment: .top, spacing: 8) {
                     StatusBadge(task: active)
                     Text("\(active.id) · \(active.title)").font(.subheadline).lineLimit(2)
+                }
+                if active.status == "blocked" {
+                    Button {
+                        model.tab = .board
+                        model.openTask = TaskRef(id: active.id)
+                    } label: {
+                        Label(active.blocker ?? "Нужна помощь — открыть и ответить", systemImage: "exclamationmark.octagon.fill")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(BoardColumn.blocked.color)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .buttonStyle(.plain)
                 }
             } else if let next {
                 Text("Следующая: \(next.id) · \(next.title)")
@@ -118,10 +131,12 @@ struct BotCard: View {
         .card(radius: 18)
     }
 
-    private func statusPill(active: Bool, bound: Bool) -> some View {
-        let (text, tint): (String, Color) = active
-            ? ("работает", BoardColumn.done.color)
-            : bound ? ("ждёт", BoardColumn.testing.color) : ("не привязан", .gray)
+    private func statusPill(blocked: Bool, active: Bool, bound: Bool) -> some View {
+        let (text, tint): (String, Color) = blocked
+            ? ("блокер", BoardColumn.blocked.color)
+            : active
+                ? ("работает", BoardColumn.done.color)
+                : bound ? ("ждёт", BoardColumn.testing.color) : ("не привязан", .gray)
         return Text(text)
             .font(.caption2.weight(.bold))
             .foregroundStyle(tint)

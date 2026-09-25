@@ -18,19 +18,25 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        @Bindable var model = model
         Group {
             if model.servers.isEmpty {
                 OnboardingView()
             } else {
-                TabView {
+                TabView(selection: $model.tab) {
                     BoardView()
                         .tabItem { Label("Доска", systemImage: "rectangle.split.3x1") }
+                        .tag(AppTab.board)
+                        .badge(model.blockedCount)
                     BotsView()
                         .tabItem { Label("Боты", systemImage: "cat") }
+                        .tag(AppTab.bots)
                     ScreensView()
                         .tabItem { Label("Экраны", systemImage: "display.2") }
+                        .tag(AppTab.screens)
                     SettingsView()
                         .tabItem { Label("Настройки", systemImage: "gearshape") }
+                        .tag(AppTab.settings)
                 }
             }
         }

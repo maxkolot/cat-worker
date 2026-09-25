@@ -47,6 +47,10 @@ struct TaskDetailView: View {
                 Text(task.title)
                     .font(.title3.weight(.bold))
 
+                if task.status == "blocked" {
+                    BlockerPanel(task: task, chatURL: role?.chatUrl.flatMap { URL(string: $0) })
+                }
+
                 Menu {
                     ForEach(BoardColumn.allCases) { column in
                         Button {
@@ -101,6 +105,85 @@ struct TaskDetailView: View {
     }
 }
 
+/// What the bot is stuck on + reply box: the reply is typed into the role's chat by the browser extension
+struct BlockerPanel: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openURL) private var openURL
+    let task: BoardTask
+    let chatURL: URL?
+    @State private var reply = ""
+    @State private var sending = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        let pending = model.pendingReplies(for: task.roleId)
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Бот застрял и ждёт тебя", systemImage: "exclamationmark.octagon.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(BoardColumn.blocked.color)
+            Text(task.blocker ?? "Нужна помощь человека")
+                .font(.callout)
+                .textSelection(.enabled)
+
+            TextField("Ответ боту: что сделал / что решил…", text: $reply, axis: .vertical)
+                .lineLimit(3...8)
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Palette.bg))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.line))
+                .focused($focused)
+
+            HStack(spacing: 8) {
+                Button {
+                    let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return }
+                    sending = true
+                    Task {
+                        if await model.reply(to: task, text: text) {
+                            reply = ""
+                            focused = false
+                        }
+                        sending = false
+                    }
+                } label: {
+                    Label("Ответить в чате", systemImage: "paperplane.fill")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(BoardColumn.blocked.color)
+                .disabled(sending || reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                if let chatURL {
+                    Button {
+                        openURL(chatURL)
+                    } label: {
+                        Image(systemName: "arrow.up.right.square")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Открыть чат роли в ChatGPT")
+                }
+            }
+
+            if !pending.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Ждут отправки в чат (\(pending.count)):")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                    ForEach(pending) { m in
+                        Text("✉️ " + m.text).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                    }
+                    Text("Уйдут, когда вкладка роли в Chrome увидит, что чат свободен.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 14).fill(BoardColumn.blocked.color.opacity(0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(BoardColumn.blocked.color.opacity(0.6), lineWidth: 1))
+    }
+}
+
 struct HistoryRow: View {
     let entry: HistoryEntry
 
@@ -110,6 +193,7 @@ struct HistoryRow: View {
             case "development": return "разработка"
             case "testing": return (entry.round ?? 0) > 1 ? "тестирование \(entry.round ?? 0)" : "тестирование"
             case "fixes": return "фиксы"
+            case "blocked": return "блокер"
             case "done": return "готово"
             default: return "создана"
             }

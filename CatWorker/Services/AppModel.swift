@@ -26,6 +26,10 @@ final class AppModel {
     // one-line confirmation ("Скопировано", "T12 → Готово")
     var toast: String?
 
+    // navigation driven from outside (notification deep links)
+    var tab: AppTab = .board
+    var openTask: TaskRef?
+
     init() {
         if let data = Keychain.load(account: "servers"),
            let saved = try? JSONDecoder().decode([ServerConfig].self, from: data) {
@@ -78,14 +82,26 @@ final class AppModel {
     }
 
     /// catworker://add?name=…&url=…&key=…&id=…&prefix=… (QR from the browser extension)
+    /// catworker://task?server=<id>&task=<id>         (blocker notification from ntfy)
     @discardableResult
     func handleURL(_ url: URL) -> Bool {
-        guard url.scheme == "catworker", url.host == "add",
+        guard url.scheme == "catworker",
               let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return false }
         // URLSearchParams in the extension encodes spaces as "+"
         func value(_ name: String) -> String? {
             comps.queryItems?.first { $0.name == name }?.value?.replacingOccurrences(of: "+", with: " ")
         }
+        if url.host == "task" {
+            guard let taskID = value("task") else { return false }
+            if let serverID = value("server"), servers.contains(where: { $0.id == serverID }) {
+                selectServer(serverID)
+            }
+            tab = .board
+            openTask = TaskRef(id: taskID)
+            Task { await refresh() }
+            return true
+        }
+        guard url.host == "add" else { return false }
         guard let serverURL = value("url"), let key = value("key"), !key.isEmpty else { return false }
         addOrUpdate(ServerConfig(
             id: value("id") ?? UUID().uuidString,
@@ -156,7 +172,7 @@ final class AppModel {
     }
 
     func activeTask(of roleID: String) -> BoardTask? {
-        tasks.first { $0.roleId == roleID && ["development", "testing", "fixes"].contains($0.status) }
+        tasks.first { $0.roleId == roleID && ["blocked", "development", "testing", "fixes"].contains($0.status) }
     }
 
     func nextTask(of roleID: String) -> BoardTask? {
@@ -217,6 +233,26 @@ final class AppModel {
             show("Скопировано. Чат роли не привязан — открой его в ChatGPT вручную")
         }
     }
+
+    /// Reply to a bot: queued on the server, the extension types it into the role's chat when it is free
+    func reply(to task: BoardTask, text: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            try await api.sendMessage(roleID: task.roleId, taskID: task.id, text: text)
+            show("Ответ уйдёт в чат роли, как только он освободится")
+            await refresh()
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
+
+    func pendingReplies(for roleID: String) -> [BoardMessage] {
+        (state?.messages ?? []).filter { $0.roleId == roleID }
+    }
+
+    var blockedCount: Int { tasks.filter { $0.status == "blocked" }.count }
 
     func copyRole(_ role: Role) {
         UIPasteboard.general.string = withPrefix(role.prompt ?? role.brief ?? role.name)

@@ -7,6 +7,32 @@ struct BoardState: Decodable {
     var projects: [Project]
     var roles: [Role]
     var tasks: [BoardTask]
+    /// Owner replies not yet delivered into the role's chat
+    var messages: [BoardMessage]?
+}
+
+struct BoardMessage: Decodable, Identifiable, Hashable {
+    let id: String
+    let roleId: String
+    let taskId: String?
+    let text: String
+    let created: String?
+}
+
+struct NotifyInfo: Decodable {
+    let serverId: String?
+    let serverName: String?
+    let ntfyUrl: String?
+    let topic: String?
+}
+
+/// Sheet target for a task opened from the board or a notification
+struct TaskRef: Identifiable, Hashable {
+    let id: String
+}
+
+enum AppTab: Hashable {
+    case board, bots, screens, settings
 }
 
 struct Project: Decodable, Identifiable, Hashable {
@@ -49,6 +75,8 @@ struct BoardTask: Decodable, Identifiable, Hashable {
     let createdBy: String?
     let history: [HistoryEntry]?
     let prompt: String?
+    /// What the bot needs from the human (status "blocked")
+    let blocker: String?
 }
 
 struct ScreensResponse: Decodable {
@@ -79,12 +107,13 @@ struct ServerConfig: Codable, Identifiable, Hashable {
 // MARK: - Kanban columns
 
 enum BoardColumn: String, CaseIterable, Identifiable {
-    case created, sent, inProgress, fixes, testing, done
+    case blocked, created, sent, inProgress, fixes, testing, done
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .blocked: return "Блокер"
         case .created: return "Создано"
         case .sent: return "Отправлено"
         case .inProgress: return "В работе"
@@ -97,6 +126,7 @@ enum BoardColumn: String, CaseIterable, Identifiable {
     /// Server status a task gets when dropped here (`sent` = todo + dispatched mark)
     var status: String {
         switch self {
+        case .blocked: return "blocked"
         case .created, .sent: return "todo"
         case .inProgress: return "development"
         case .fixes: return "fixes"
@@ -107,6 +137,7 @@ enum BoardColumn: String, CaseIterable, Identifiable {
 
     var color: Color {
         switch self {
+        case .blocked: return Color(hex: 0xDC2626)
         case .created: return Color(hex: 0x6B7280)
         case .sent: return Color(hex: 0x8B5CF6)
         case .inProgress: return Color(hex: 0x3B82F6)
@@ -118,6 +149,7 @@ enum BoardColumn: String, CaseIterable, Identifiable {
 
     static func of(_ task: BoardTask) -> BoardColumn {
         switch task.status {
+        case "blocked": return .blocked
         case "development": return .inProgress
         case "fixes": return .fixes
         case "testing": return .testing

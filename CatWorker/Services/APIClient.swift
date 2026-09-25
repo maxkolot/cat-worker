@@ -63,4 +63,19 @@ struct APIClient {
     func addTask(roleID: String, spec: String) async throws {
         _ = try await request("/tasks", method: "POST", body: ["role_id": roleID, "spec": spec])
     }
+
+    /// Owner reply to a role; the browser extension types it into the role's ChatGPT chat
+    func sendMessage(roleID: String, taskID: String?, text: String) async throws {
+        var body: [String: Any] = ["text": text]
+        if let taskID { body["task_id"] = taskID }
+        _ = try await request("/roles/\(roleID)/messages", method: "POST", body: body)
+    }
+
+    func notifyInfo() async throws -> NotifyInfo {
+        try Self.decoder.decode(NotifyInfo.self, from: try await request("/notify"))
+    }
+
+    func notifyTest() async throws {
+        _ = try await request("/notify/test", method: "POST", body: [:])
+    }
 }
