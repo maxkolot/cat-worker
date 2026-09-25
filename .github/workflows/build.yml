@@ -1,0 +1,79 @@
+name: Build Cat Worker
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      VERSION: 1.0.${{ github.run_number }}
+      BUILD: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      # Unsigned build: SideStore/AltStore sign the app with your Apple ID when installing
+      - name: Build (unsigned)
+        run: |
+          set +e
+          xcodebuild \
+            -project CatWorker.xcodeproj \
+            -scheme CatWorker \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build > build.log 2>&1
+          status=$?
+          grep -E "error:|BUILD (SUCCEEDED|FAILED)" build.log | head -60
+          exit $status
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/CatWorker.app Payload/
+          zip -qry CatWorker.ipa Payload
+          ls -la CatWorker.ipa
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CatWorker-${{ env.VERSION }}
+          path: |
+            CatWorker.ipa
+            build.log
+          if-no-files-found: ignore
+
+      - name: Publish release and SideStore source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" CatWorker.ipa --title "Cat Worker $VERSION" --notes "Сборка $BUILD · ${GITHUB_SHA::7}"
+          SIZE=$(stat -f%z CatWorker.ipa)
+          python3 scripts/make_source.py "$GITHUB_REPOSITORY" "$VERSION" "$BUILD" "$SIZE" > source.json
+          cat source.json
+          gh release view source >/dev/null 2>&1 || gh release create source --title "SideStore source" --notes "Добавь в SideStore: https://github.com/$GITHUB_REPOSITORY/releases/download/source/source.json" --latest=false
+          gh release upload source source.json --clobber
